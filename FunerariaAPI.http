@@ -1,0 +1,6 @@
+@FunerariaAPI_HostAddress = http://localhost:5098
+
+GET {{FunerariaAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
