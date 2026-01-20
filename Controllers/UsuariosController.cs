@@ -25,49 +25,50 @@ namespace FunerariaAPI.Controllers
         [HttpGet("mi-perfil")]
         public async Task<ActionResult<Usuario>> GetMiPerfil()
         {
-            // Extraer ID de forma segura
+            // Extraer ID de forma segura desde el Claim NameIdentifier
             var idClaim = User.FindFirst(ClaimTypes.NameIdentifier);
             if (idClaim == null || !int.TryParse(idClaim.Value, out int usuarioId)) 
-                return Unauthorized("Usuario no identificado en el token.");
+                return Unauthorized("No se pudo identificar al usuario en el token.");
 
-            // Usamos AsNoTracking porque solo vamos a mostrar los datos, no a editarlos
+            // AsNoTracking mejora el rendimiento al no rastrear cambios en el objeto
             var usuario = await _context.Usuarios
                 .AsNoTracking()
                 .FirstOrDefaultAsync(u => u.Id == usuarioId);
 
-            if (usuario == null) return NotFound("Usuario no encontrado en la base de datos.");
+            if (usuario == null) return NotFound("Usuario no encontrado.");
 
-            // Seguridad: Ocultar password antes de enviar al frontend
-            usuario.Password = "";
+            // Seguridad: El password nunca debe viajar al Frontend
+            usuario.Password = ""; 
             return Ok(usuario);
         }
 
-        // ---------------- ZONA ADMIN ----------------
+        // ---------------- ZONA ADMIN (ALIMENTA TU PANEL) ----------------
 
-        // GET: api/Usuarios (SOLO ADMIN) - Lista todos los clientes registrados
+        // GET: api/Usuarios (SOLO ADMIN) - Lista para la pestaña "Directorio de Clientes"
         [Authorize(Roles = "admin")]
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Usuario>>> GetUsuarios()
         {
+            // Traemos todos los usuarios mapeando a los nombres de columna en minúscula definidos en tu Modelo
             var usuarios = await _context.Usuarios
                 .AsNoTracking()
                 .ToListAsync();
 
-            // Limpiamos passwords de toda la lista por seguridad
+            // Limpiamos los passwords de todos los registros por seguridad
             usuarios.ForEach(u => u.Password = "");
             
             return Ok(usuarios);
         }
 
-        // DELETE: api/Usuarios/{id} (SOLO ADMIN)
+        // DELETE: api/Usuarios/{id} (SOLO ADMIN) - Borrar usuario desde el Panel
         [Authorize(Roles = "admin")]
         [HttpDelete("{id}")]
         public async Task<IActionResult> BorrarUsuario(int id)
         {
             var usuario = await _context.Usuarios.FindAsync(id);
-            if (usuario == null) return NotFound("El usuario que intentas borrar no existe.");
+            if (usuario == null) return NotFound("El usuario no existe.");
 
-            // Evitar que el admin se borre a sí mismo por error
+            // Protección: Evitar que el administrador se borre a sí mismo
             var adminIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
             if (adminIdClaim != null && int.Parse(adminIdClaim.Value) == id)
             {
