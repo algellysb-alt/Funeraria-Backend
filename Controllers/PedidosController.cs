@@ -7,7 +7,7 @@ using System.Security.Claims;
 
 namespace FunerariaAPI.Controllers
 {
-    [Authorize] // 🔒 Todo requiere Token por defecto
+    [Authorize]
     [Route("api/[controller]")]
     [ApiController]
     public class PedidosController : ControllerBase
@@ -19,16 +19,15 @@ namespace FunerariaAPI.Controllers
             _context = context;
         }
 
-        // ---------------- ZONA CLIENTE (VER LO SUYO) ----------------
-
-        // GET: api/Pedidos (Devuelve SOLO los pedidos del usuario logueado)
+        // --- ZONA CLIENTE (VER MIS PEDIDOS) ---
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Pedido>>> GetMisPedidos()
         {
             int usuarioId = ObtenerIdUsuario();
 
+            // Usamos AsNoTracking para evitar carga excesiva en Render
             return await _context.Pedidos
-                .AsNoTracking() // Optimización para lectura
+                .AsNoTracking() 
                 .Where(p => p.UsuarioId == usuarioId)
                 .Include(p => p.Detalles)
                     .ThenInclude(d => d.Producto)
@@ -36,15 +35,15 @@ namespace FunerariaAPI.Controllers
                 .ToListAsync();
         }
 
-        // POST: api/Pedidos (Crear nuevo pedido)
+        // --- POST: CREAR PEDIDO (CORREGIDO PARA EVITAR ERROR 500) ---
         [HttpPost]
         public async Task<ActionResult<Pedido>> PostPedido(CrearPedidoDto pedidoDto)
         {
             int usuarioId = ObtenerIdUsuario();
 
-            // Validación: Evita pedidos vacíos que causan errores 500
+            // Validación crítica para evitar errores en la base de datos
             if (pedidoDto.Items == null || !pedidoDto.Items.Any())
-                return BadRequest("El pedido debe contener al menos un producto.");
+                return BadRequest("El pedido no puede estar vacío.");
 
             var nuevoPedido = new Pedido
             {
@@ -52,22 +51,22 @@ namespace FunerariaAPI.Controllers
                 NombreDifunto = pedidoDto.NombreDifunto,
                 FechaServicio = pedidoDto.FechaServicio,
                 NotasAdicionales = pedidoDto.Notas,
-                FechaSolicitud = DateTime.UtcNow, // Uso de UTC para servidores en la nube
+                FechaSolicitud = DateTime.UtcNow, // UTC es mejor para la nube
                 Estado = "pendiente",
                 TotalEstimado = 0,
-                Detalles = new List<DetallePedido>() // Inicialización explícita necesaria
+                Detalles = new List<DetallePedido>() // Inicialización preventiva
             };
 
             decimal total = 0;
-
             foreach (var item in pedidoDto.Items)
             {
+                // Buscamos el producto por ID real
                 var prod = await _context.Catalogo.FindAsync(item.ProductoId);
                 if (prod != null)
                 {
                     nuevoPedido.Detalles.Add(new DetallePedido
                     {
-                        ItemId = item.ProductoId, // Asegúrate que ItemId sea la FK correcta
+                        ItemId = item.ProductoId,
                         Cantidad = item.Cantidad,
                         PrecioUnitario = prod.Precio
                     });
@@ -79,27 +78,24 @@ namespace FunerariaAPI.Controllers
             _context.Pedidos.Add(nuevoPedido);
             await _context.SaveChangesAsync();
 
-            // Usamos Ok para evitar problemas de ruteo en CreatedAtAction durante el despliegue
             return Ok(nuevoPedido);
         }
 
-        // ---------------- ZONA ADMIN (PODER TOTAL) ----------------
-
-        // GET: api/Pedidos/todos (SOLO ADMIN) - Ve los pedidos de TODO el mundo
+        // --- ZONA ADMIN (ALIMENTA EL PANEL DE CONTROL) ---
         [Authorize(Roles = "admin")]
         [HttpGet("todos")]
         public async Task<ActionResult<IEnumerable<Pedido>>> GetTodosLosPedidos()
         {
+            // El Include de Usuario es vital para el Panel Admin
             return await _context.Pedidos
                 .AsNoTracking()
-                .Include(p => p.Usuario) // Crucial para que aparezcan nombres en el Panel Admin
+                .Include(p => p.Usuario) 
                 .Include(p => p.Detalles)
                     .ThenInclude(d => d.Producto)
                 .OrderByDescending(p => p.FechaSolicitud)
                 .ToListAsync();
         }
 
-        // PUT: api/Pedidos/{id}/estado (SOLO ADMIN) - Cambia el estado
         [Authorize(Roles = "admin")]
         [HttpPut("{id}/estado")]
         public async Task<IActionResult> ActualizarEstadoPedido(int id, [FromBody] string nuevoEstado)
@@ -107,26 +103,22 @@ namespace FunerariaAPI.Controllers
             var pedido = await _context.Pedidos.FindAsync(id);
             if (pedido == null) return NotFound();
 
-            pedido.Estado = nuevoEstado.ToLower(); // Estandariza a minúsculas
+            pedido.Estado = nuevoEstado.ToLower(); // Estandarizar a minúsculas
             await _context.SaveChangesAsync();
 
             return NoContent();
         }
 
-        // ---------------- FUNCIONES AUXILIARES ----------------
-
         private int ObtenerIdUsuario()
         {
             var identity = HttpContext.User.Identity as ClaimsIdentity;
-            if (identity != null)
+            var idClaim = identity?.FindFirst(ClaimTypes.NameIdentifier);
+            
+            if (idClaim != null && int.TryParse(idClaim.Value, out int id))
             {
-                var idClaim = identity.FindFirst(ClaimTypes.NameIdentifier);
-                if (idClaim != null && int.TryParse(idClaim.Value, out int id))
-                {
-                    return id;
-                }
+                return id;
             }
-            throw new UnauthorizedAccessException("No se pudo identificar al usuario.");
+            throw new UnauthorizedAccessException("Usuario no válido.");
         }
     }
 }
