@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using FunerariaAPI.Data;
 using FunerariaAPI.Models;
@@ -28,9 +28,10 @@ namespace FunerariaAPI.Controllers
             int usuarioId = ObtenerIdUsuario();
 
             return await _context.Pedidos
+                .AsNoTracking() // Optimización para lectura
                 .Where(p => p.UsuarioId == usuarioId)
                 .Include(p => p.Detalles)
-                .ThenInclude(d => d.Producto)
+                    .ThenInclude(d => d.Producto)
                 .OrderByDescending(p => p.FechaSolicitud)
                 .ToListAsync();
         }
@@ -41,15 +42,20 @@ namespace FunerariaAPI.Controllers
         {
             int usuarioId = ObtenerIdUsuario();
 
+            // Validación: Evita pedidos vacíos que causan errores 500
+            if (pedidoDto.Items == null || !pedidoDto.Items.Any())
+                return BadRequest("El pedido debe contener al menos un producto.");
+
             var nuevoPedido = new Pedido
             {
                 UsuarioId = usuarioId,
                 NombreDifunto = pedidoDto.NombreDifunto,
                 FechaServicio = pedidoDto.FechaServicio,
                 NotasAdicionales = pedidoDto.Notas,
-                FechaSolicitud = DateTime.Now,
+                FechaSolicitud = DateTime.UtcNow, // Uso de UTC para servidores en la nube
                 Estado = "pendiente",
-                TotalEstimado = 0
+                TotalEstimado = 0,
+                Detalles = new List<DetallePedido>() // Inicialización explícita necesaria
             };
 
             decimal total = 0;
@@ -61,7 +67,7 @@ namespace FunerariaAPI.Controllers
                 {
                     nuevoPedido.Detalles.Add(new DetallePedido
                     {
-                        ItemId = item.ProductoId,
+                        ItemId = item.ProductoId, // Asegúrate que ItemId sea la FK correcta
                         Cantidad = item.Cantidad,
                         PrecioUnitario = prod.Precio
                     });
@@ -73,7 +79,8 @@ namespace FunerariaAPI.Controllers
             _context.Pedidos.Add(nuevoPedido);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetMisPedidos), new { id = nuevoPedido.Id }, nuevoPedido);
+            // Usamos Ok para evitar problemas de ruteo en CreatedAtAction durante el despliegue
+            return Ok(nuevoPedido);
         }
 
         // ---------------- ZONA ADMIN (PODER TOTAL) ----------------
@@ -84,14 +91,15 @@ namespace FunerariaAPI.Controllers
         public async Task<ActionResult<IEnumerable<Pedido>>> GetTodosLosPedidos()
         {
             return await _context.Pedidos
-                .Include(p => p.Usuario) // Importante: Incluir datos del cliente
+                .AsNoTracking()
+                .Include(p => p.Usuario) // Crucial para que aparezcan nombres en el Panel Admin
                 .Include(p => p.Detalles)
-                .ThenInclude(d => d.Producto)
+                    .ThenInclude(d => d.Producto)
                 .OrderByDescending(p => p.FechaSolicitud)
                 .ToListAsync();
         }
 
-        // PUT: api/Pedidos/{id}/estado (SOLO ADMIN) - Cambia el estado (ej: pendiente -> aprobado)
+        // PUT: api/Pedidos/{id}/estado (SOLO ADMIN) - Cambia el estado
         [Authorize(Roles = "admin")]
         [HttpPut("{id}/estado")]
         public async Task<IActionResult> ActualizarEstadoPedido(int id, [FromBody] string nuevoEstado)
@@ -99,7 +107,7 @@ namespace FunerariaAPI.Controllers
             var pedido = await _context.Pedidos.FindAsync(id);
             if (pedido == null) return NotFound();
 
-            pedido.Estado = nuevoEstado;
+            pedido.Estado = nuevoEstado.ToLower(); // Estandariza a minúsculas
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,8 +126,7 @@ namespace FunerariaAPI.Controllers
                     return id;
                 }
             }
-            // Si llegamos aquí es un error grave de autenticación
-            throw new Exception("No se pudo identificar al usuario en el token.");
+            throw new UnauthorizedAccessException("No se pudo identificar al usuario.");
         }
     }
 }
