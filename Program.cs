@@ -1,4 +1,4 @@
-using FunerariaAPI.Data; // Asegúrate de que este sea el namespace correcto de tu DbContext
+using FunerariaAPI.Data; // AsegÃºrate de que este sea el namespace correcto de tu DbContext
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -21,14 +21,14 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("PermitirTodo", policy =>
     {
-        policy.AllowAnyOrigin()   // Permite cualquier URL (útil para desarrollo)
+        policy.AllowAnyOrigin()   // Permite cualquier URL (Ãºtil para desarrollo)
               .AllowAnyMethod()   // Permite GET, POST, PUT, DELETE
-              .AllowAnyHeader();  // Permite cabeceras de autorización
+              .AllowAnyHeader();  // Permite cabeceras de autorizaciÃ³n
     });
 });
 
 // -----------------------------------------------------------------------------
-// 3. SEGURIDAD JWT (Validación del Token)
+// 3. SEGURIDAD JWT (ValidaciÃ³n del Token)
 // -----------------------------------------------------------------------------
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -48,7 +48,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddControllers();
 
 // -----------------------------------------------------------------------------
-// 4. SWAGGER (Documentación con botón de Candado)
+// 4. SWAGGER (DocumentaciÃ³n con botÃ³n de Candado)
 // -----------------------------------------------------------------------------
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -87,22 +87,22 @@ builder.Services.AddSwaggerGen(c =>
 var app = builder.Build();
 
 // -----------------------------------------------------------------------------
-// 5. MIDDLEWARE (El orden aquí es CRUCIAL)
+// 5. MIDDLEWARE (El orden aquÃ­ es CRUCIAL)
 // -----------------------------------------------------------------------------
 
-// Swagger activo siempre (incluso en producción para que Render funcione bien)
+// Swagger activo siempre (incluso en producciÃ³n para que Render funcione bien)
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// Redirección HTTPS
+// RedirecciÃ³n HTTPS
 app.UseHttpsRedirection();
 
-// CORS debe ir ANTES de la Autenticación
+// CORS debe ir ANTES de la AutenticaciÃ³n
 app.UseCors("PermitirTodo");
 
-// Autenticación y Autorización
-app.UseAuthentication(); // 1. ¿Quién eres?
-app.UseAuthorization();  // 2. ¿Tienes permiso?
+// AutenticaciÃ³n y AutorizaciÃ³n
+app.UseAuthentication(); // 1. Â¿QuiÃ©n eres?
+app.UseAuthorization();  // 2. Â¿Tienes permiso?
 
 // Mapeo de controladores
 app.MapControllers();
